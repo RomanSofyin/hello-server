@@ -38,7 +38,7 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        let job = Box::new(f);
+        let job: Job = Box::new(f);
 
         self.sender.send(job).unwrap();
     }
@@ -52,7 +52,7 @@ struct Worker {
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
         let thread = thread::spawn(move || loop {
-            let job = receiver
+            let job: Job = receiver
                 .lock()
                 .expect("mutext is in poisoned state - another thread crashed while holding lock")
                 .recv()

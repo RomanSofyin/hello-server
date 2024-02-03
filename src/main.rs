@@ -24,6 +24,8 @@ fn handle_connection(mut stream: TcpStream) {
 
     let (status_line, filename) = if request_line == "GET / HTTP/1.1" {
         ("HTTP/1.1 200 OK", "./src/hello.html")
+    } else if request_line == "GET /sleep HTTP/1.1" {
+        ("HTTP/1.1 200 OK", "./src/hello.html")
     } else {
         ("HTTP/1.1 404 NOT FOUND", "./src/404.html")
     };
