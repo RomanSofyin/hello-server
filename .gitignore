@@ -1,3 +1,5 @@
 /hello-server/target
+/async-server/target
 /minigrep/target
+/minigrep/output.txt
 /.vscode
