@@ -1,21 +1,23 @@
-use std::{
-    fs,
-    time::Duration,
-};
-use async_std::{task, prelude::*};
 use async_std::net::TcpListener;
 use async_std::net::TcpStream;
+use async_std::{
+    prelude::*,
+    task::{self, spawn},
+};
 use futures::stream::StreamExt;
-
+use std::{fs, time::Duration};
 
 #[async_std::main]
 async fn main() {
     // Listen for incoming TCP connections on localhost port 7878
     let listener = TcpListener::bind("127.0.0.1:7878").await.unwrap();
-    listener.incoming().for_each_concurrent(/*limit*/ None, |tcpstream| async move {
-        let tcpstream = tcpstream.unwrap();
-        handle_connection(tcpstream).await;
-    }).await;
+    listener
+        .incoming()
+        .for_each_concurrent(/*limit*/ None, |tcpstream| async move {
+            let tcpstream = tcpstream.unwrap();
+            spawn(handle_connection(tcpstream));
+        })
+        .await;
 }
 
 async fn handle_connection(mut stream: TcpStream) {
@@ -28,7 +30,7 @@ async fn handle_connection(mut stream: TcpStream) {
 
     // Respond with greetings or a 404,
     // depending on the data in the request
-    
+
     // println!("--- 100 ---");
     let (status_line, filename) = if buffer.starts_with(get) {
         ("HTTP/1.1 200 OK\r\n\r\n", "./src/hello.html")
