@@ -17,6 +17,31 @@ struct Executor {
     ready_queue: Receiver<Arc<Task>>,
 }
 
+impl Executor {
+    fn run(&self) {
+        while let Ok(task) = self.ready_queue.recv() {
+            // Take the future, and if it has not yet completed (is still Some),
+            // poll it in an attempt to complete it.
+            println!("Executor run again ---");
+            let mut future_slot = task.future.lock().unwrap();
+            if let Some(mut future) = future_slot.take() {
+                // Create a `LocalWaker` from the task itself
+                let waker = waker_ref(&task);
+                let context = &mut Context::from_waker(&waker);
+                // `BoxFuture<T>` is a type alias for
+                // `Pin<Box<dyn Future<Output = T> + Send + 'static>>`.
+                // We can get a `Pin<&mut dyn Future + Send + 'static>`
+                // from it by calling the `Pin::as_mut` method.
+                if future.as_mut().poll(context).is_pending() {
+                    // We're not done processing the future, so put it
+                    // back in its task to be run again in the future.
+                    *future_slot = Some(future);
+                }
+            }
+        }
+    }
+}
+
 /// `Spawner` spawns new futures onto the task channel.
 #[derive(Clone)]
 struct Spawner {
@@ -49,6 +74,18 @@ struct Task {
     task_sender: SyncSender<Arc<Task>>,
 }
 
+impl ArcWake for Task {
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        // Implement `wake` by sending this task back onto the task channel
+        // so that it will be polled again by the executor.
+        let cloned = arc_self.clone();
+        arc_self
+            .task_sender
+            .send(cloned)
+            .expect("too many tasks queued");
+    }
+}
+
 fn new_executor_and_spawner() -> (Executor, Spawner) {
     // Maximum number of tasks to allow queueing in the channel at once.
     // This is just to make `sync_channel` happy, and wouldn't be present in
@@ -58,4 +95,25 @@ fn new_executor_and_spawner() -> (Executor, Spawner) {
     (Executor { ready_queue }, Spawner { task_sender })
 }
 
-
+fn main() {
+    let (executor, spawner) = new_executor_and_spawner();
+    // Spawn a task to print before and after waiting on a timer.
+    spawner.spawn(async {
+        println!("Bona");
+        // Wait for our timer future to complete after two seconds.
+        TimerFuture::new(Duration::new(4, 0)).await;
+        println!("Capona");
+    });
+    spawner.spawn(async {
+        println!("Красное");
+        // Wait for our timer future to complete after two seconds.
+        TimerFuture::new(Duration::new(5, 0)).await;
+        println!("Белое");
+    });
+    // Drop the spawner so that our executor knows it is finished and won't
+    // receive more incoming tasks to run.
+    drop(spawner);
+    // Run the executor until the task queue is empty.
+    // This will print "howdy!", pause, and then print "done!".
+    executor.run();
+}
